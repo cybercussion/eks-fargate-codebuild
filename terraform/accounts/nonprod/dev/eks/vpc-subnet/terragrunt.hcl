@@ -1,0 +1,34 @@
+# Include the root configuration for backend and provider setup
+include {
+  path = find_in_parent_folders("root.hcl")
+}
+
+# Load common configuration
+locals {
+  common = read_terragrunt_config(find_in_parent_folders("common.hcl")).locals
+  base_module_path = "${find_in_parent_folders("root.hcl")}/../modules"
+}
+
+# Terragrunt module configuration for VPC and subnets
+terraform {
+  source = "${local.base_module_path}/vpc_subnet"
+}
+
+inputs = {
+  # VPC and Subnet configuration
+  vpc_cidr_block        = "172.16.0.0/16"
+  public_subnet_1_cidr  = "172.16.1.0/24"
+  public_subnet_2_cidr  = "172.16.2.0/24"
+  private_subnet_1_cidr = "172.16.3.0/24"
+  private_subnet_2_cidr = "172.16.4.0/24"
+
+  # Availability Zones for the subnets
+  az_1                  = "us-west-2b"
+  az_2                  = "us-west-2c"
+
+  # Project details
+  project_name = "${local.common.environment}-eks"
+
+  # Tags for resources
+  tags = local.common.tags 
+}

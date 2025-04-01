@@ -1,0 +1,16 @@
+# Severity filter (maps directly)
+severity: CRITICAL
+
+# Misconfiguration scanning section
+misconf:
+  terraform:
+    # Exclude specific checks (similar to tfsec's exclude)
+    ignore-checks:
+      - aws-elb-http-not-used
+      - aws-ec2-no-public-egress-sgr
+      - AVD-AWS-0104  # Suppresses "Security group rule allows unrestricted egress"
+    # Exclude downloaded modules (tfsec's exclude_downloaded_modules)
+    skip-dirs:
+      - ".terraform"  # Skips downloaded module dirs
+      - "test/"
+      - "modules/legacy/"

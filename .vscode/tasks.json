@@ -1,0 +1,68 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    // --- CodeBuild Runner ---
+    {
+      "label": "Init CodeBuild Runner",
+      "type": "shell",
+      "command": "python terraform/scripts/tg.py -a nonprod -e dev -f codebuild-runner -c init"
+    },
+    {
+      "label": "Validate CodeBuild Runner",
+      "type": "shell",
+      "command": "python terraform/scripts/tg.py -a nonprod -e dev -f codebuild-runner -c validate"
+    },
+    {
+      "label": "Plan CodeBuild Runner",
+      "type": "shell",
+      "command": "python terraform/scripts/tg.py -a nonprod -e dev -f codebuild-runner -c plan"
+    },
+    {
+      "label": "Apply CodeBuild Runner",
+      "type": "shell",
+      "command": "python terraform/scripts/tg.py -a nonprod -e dev -f codebuild-runner -c apply"
+    },
+    {
+      "label": "Terraform: CodeBuild Runner (nonprod/dev)",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Init CodeBuild Runner",
+        "Validate CodeBuild Runner",
+        "Plan CodeBuild Runner",
+        "Apply CodeBuild Runner"
+      ]
+    },
+
+    // --- EKS Cluster ---
+    {
+      "label": "Init EKS Cluster",
+      "type": "shell",
+      "command": "python terraform/scripts/tg.py -a nonprod -e dev -f eks -c init"
+    },
+    {
+      "label": "Validate EKS Cluster",
+      "type": "shell",
+      "command": "python terraform/scripts/tg.py -a nonprod -e dev -f eks -c validate"
+    },
+    {
+      "label": "Plan EKS Cluster",
+      "type": "shell",
+      "command": "python terraform/scripts/tg.py -a nonprod -e dev -f eks -c plan"
+    },
+    {
+      "label": "Apply EKS Cluster",
+      "type": "shell",
+      "command": "python terraform/scripts/tg.py -a nonprod -e dev -f eks -c apply"
+    },
+    {
+      "label": "Terraform: EKS Cluster (nonprod/dev)",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Init EKS Cluster",
+        "Validate EKS Cluster",
+        "Plan EKS Cluster",
+        "Apply EKS Cluster"
+      ]
+    }
+  ]
+}

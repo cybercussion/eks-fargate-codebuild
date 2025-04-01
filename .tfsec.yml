@@ -1,0 +1,25 @@
+# Minimum severity to show in output
+minimum_severity: CRITICAL
+
+# Ignore specific rules that you accept by design
+exclude:
+  - aws-elb-http-not-used  # HTTP redirect use-case
+  - aws-ec2-no-public-egress-sgr  # Public egress security group
+  # Add others here as needed
+
+# Ignore downloaded modules to reduce noise
+exclude_downloaded_modules: true
+
+# Include passed checks for full audit visibility (optional)
+include_passed: true
+
+# Include ignored checks in output (for review/debug)
+include_ignored: true
+
+# Optional: exclude paths like test or generated folders
+exclude_paths:
+  - "test/"
+  - "modules/legacy/"
+
+# Optional: set to true if using Rego-based custom policies
+rego_only: false
