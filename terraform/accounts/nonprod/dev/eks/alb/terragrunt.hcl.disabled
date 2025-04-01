@@ -1,0 +1,74 @@
+include {
+  path = find_in_parent_folders("root.hcl")
+}
+
+locals {
+  common = read_terragrunt_config(find_in_parent_folders("common.hcl")).locals
+  base_module_path = "${find_in_parent_folders("root.hcl")}/../modules"
+}
+
+terraform {
+  source = "${local.base_module_path}/alb"
+}
+
+dependency "eks_cluster" {
+  config_path = "../eks-cluster"
+
+  #mock_outputs_merge_with_state = true
+  mock_outputs = {
+    cluster_name = "mock-eks-cluster-name"
+  }
+}
+
+dependency "vpc" {
+  config_path = "../vpc-subnet"
+  mock_outputs = {
+    vpc_id = "vpc-123456"
+    public_subnet_ids  = ["subnet-aaaa", "subnet-bbbb"]
+    private_subnet_ids = ["subnet-cccc", "subnet-dddd"]
+  }
+}
+
+dependency "security_group" {
+  config_path = "../security-group" # Reference the security group Terragrunt config
+
+  #mock_outputs_merge_with_state = true
+  mock_outputs = {
+    security_group_id = "sg-1234567890abcdef"
+  }
+}
+
+inputs = {
+  name                     = "${local.common.project_name}-alb"
+  region                   = local.common.aws_region
+  environment              = local.common.environment
+  scheme                   = "internet-facing"
+  security_group_ids       = [dependency.security_group.outputs.security_group_id]
+
+  eks_enabled              = local.common.k8s # Tags load balancer for EKS
+  eks_cluster_name         = dependency.eks_cluster.outputs.cluster_name
+
+  use_vpc_from_ssm         = local.common.use_vpc_from_ssm
+  vpc_ssm_path             = local.common.use_vpc_from_ssm ? local.common.vpc_ssm_path : null
+  vpc_id                   = local.common.use_vpc_from_ssm ? null : dependency.vpc.outputs.vpc_id
+  subnet_ssm_paths_public  = local.common.use_vpc_from_ssm ? local.common.subnet_ssm_paths_public : []
+  subnet_ids               = local.common.use_vpc_from_ssm ? null : concat(
+    dependency.vpc.outputs.public_subnet_ids
+  )
+  public_subnet_ids        = local.common.use_vpc_from_ssm ? null : dependency.vpc.outputs.public_subnet_ids
+
+  certificate_ssm_path     = "/network/cert/us-west-2" # SSM parameter for the certificate ARN
+  ssl_policy               = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  idle_timeout             = 60
+  test_listener_port       = 9001
+
+  tags = merge(
+    local.common.tags,
+    {
+      Application = "${local.common.project_name}-alb"
+    }
+  )
+
+  # New variable to enable/disable HTTP port 80
+  enable_http          = true  # Set to false to disable HTTP listener (port 80)
+}

@@ -43,3 +43,15 @@ variable "project_name" {
   description = "Name of the project"
   type        = string
 }
+
+variable "k8s" {
+  description = "Enable Kubernetes-specific subnet tagging"
+  type        = bool
+  default     = false
+}
+
+variable "map_public_ip" {
+  description = "Specify if public subnets should auto-assign public IPs"
+  type        = bool
+  default     = false  # Default to false for Fargate use case
+}

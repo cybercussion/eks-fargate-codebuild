@@ -59,33 +59,33 @@ dependency "vpc" {
     public_subnet_ids  = ["subnet-aaaa", "subnet-bbbb"]
     private_subnet_ids = ["subnet-cccc", "subnet-dddd"]
   }
-  skip = local.common.use_vpc_from_ssm
 }
 
 inputs = {
   # Cluster configuration
   cluster_name    = local.common.cluster_name
-  cluster_version = "1.31"
+  cluster_version = "1.32"
 
   # AWS region
-  region = local.common.aws_region
+  region          = local.common.aws_region
 
-  # Networking configuration
-  # vpc_ssm_path     = local.common.vpc_ssm_path
-  # subnet_ssm_paths_public = local.common.subnet_ssm_paths_public  # Public subnets for EKS Cluster
-  # subnet_ssm_paths_private = local.common.subnet_ssm_paths_private  # Private subnets for Fargate
-
-  # Flexible VPC/Subnet handling
-  vpc_id = local.common.use_vpc_from_ssm ? null : dependency.vpc.outputs.vpc_id
-  vpc_ssm_path = local.common.use_vpc_from_ssm ? local.common.vpc_ssm_path : null
-
+  # Adopted VPC, Subnet IDs
+  use_vpc_from_ssm         = local.common.use_vpc_from_ssm
+  vpc_ssm_path             = local.common.use_vpc_from_ssm ? local.common.vpc_ssm_path : null
   subnet_ssm_paths_public  = local.common.use_vpc_from_ssm ? local.common.subnet_ssm_paths_public : []
   subnet_ssm_paths_private = local.common.use_vpc_from_ssm ? local.common.subnet_ssm_paths_private : []
-
   subnet_ids = local.common.use_vpc_from_ssm ? null : concat(
     dependency.vpc.outputs.private_subnet_ids,
     dependency.vpc.outputs.public_subnet_ids
   )
+  # Generated VPC and subnet IDs
+  vpc_cidr_block           = local.common.vpc_cidr_block
+  vpc_id                   = local.common.use_vpc_from_ssm ? null : dependency.vpc.outputs.vpc_id
+  private_subnet_ids       = local.common.use_vpc_from_ssm ? null : dependency.vpc.outputs.private_subnet_ids
+  public_subnet_ids        = local.common.use_vpc_from_ssm ? null : dependency.vpc.outputs.public_subnet_ids
+
+  cluster_endpoint_public_access  = local.common.cluster_endpoint_public_access
+  cluster_endpoint_private_access = local.common.cluster_endpoint_private_access
 
   # Fargate configuration
   use_fargate      = local.common.use_fargate

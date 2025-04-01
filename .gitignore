@@ -1,3 +1,7 @@
+# VS Code / IDEs
+.vscode/
+.idea/
+*.swp
 # Terraform and Terragrunt
 # Terraform state files
 *.tfstate
@@ -19,6 +23,8 @@ crash.log
 
 # Ignore Terragrunt cache files
 .terragrunt-cache/
+**/.terragrunt-cache/
+**/.terragrunt-debug.tf.json
 
 # Ignore sensitive files (if any)
 .env
@@ -43,6 +49,25 @@ Desktop.ini
 
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.pyd
+*.env
+.env.*
+*.sqlite3
+
+# Ignore Python virtual environments
+venv/
+
+# Pip
+pip-log.txt
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Docker
+*.log
+docker-compose.override.yml
+.dockerignore

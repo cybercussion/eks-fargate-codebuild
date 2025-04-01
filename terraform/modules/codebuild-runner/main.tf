@@ -3,11 +3,11 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 5.87.0"
+      version = ">= 5.93.0"
     }
     null = {
       source  = "hashicorp/null"
-      version = ">= 3.0.0"
+      version = ">= 3.2.3"
     }
   }
 
@@ -58,11 +58,20 @@ resource "aws_codebuild_project" "runner" {
     # }
   }
 
+  dynamic "vpc_config" {
+    for_each = var.enable_codebuild_vpc ? [1] : []
+    content {
+      vpc_id             = var.vpc_id
+      subnets            = var.private_subnet_ids
+      security_group_ids = var.security_group_ids
+    }
+  }
+
   environment {
     compute_type    = var.compute_type
     image          = var.image
     type           = "LINUX_CONTAINER"
-    privileged_mode = false
+    privileged_mode = var.privileged_mode
   }
 
   artifacts {

@@ -104,7 +104,7 @@ inputs = {
           "Action": [
             "iam:PassRole"
           ],
-          "Resource": "arn:aws:iam::${local.account_id}:role/CodeBuildGitHubRunnerRole",
+          "Resource": "arn:aws:iam::${local.account_id}:role/${local.common.environment}-CodeBuildGitHubRunnerRole-${local.common.github_repo}",
           "Condition": {
             "StringEqualsIfExists": {
               "iam:PassedToService": "codebuild.amazonaws.com"
@@ -118,7 +118,10 @@ inputs = {
             "ecr:BatchCheckLayerAvailability",
             "ecr:GetDownloadUrlForLayer",
             "ecr:BatchGetImage",
-            "ecr:PutImage"
+            "ecr:PutImage",
+            "ecr:InitiateLayerUpload",
+            "ecr:UploadLayerPart",
+            "ecr:CompleteLayerUpload"
           ],
           "Resource": "*"
         },
@@ -128,6 +131,87 @@ inputs = {
             "eks:DescribeCluster"
           ],
           "Resource": "arn:aws:eks:${local.region}:${local.account_id}:cluster/*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "ec2:CreateNetworkInterface",
+            "ec2:DeleteNetworkInterface",
+            "ec2:DescribeNetworkInterfaces",
+            "ec2:DescribeInstances",
+            "ec2:DescribeInstanceTypes",
+            "ec2:DescribeSubnets",
+            "ec2:DescribeVpcs",
+            "ec2:DescribeAvailabilityZones",
+            "ec2:DescribeRouteTables",
+            "ec2:DescribeDhcpOptions",
+            "ec2:DescribeSecurityGroups",
+            "ec2:DescribeNetworkAcls"
+          ],
+          "Resource": "*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "ec2:CreateNetworkInterface",
+            "ec2:CreateNetworkInterfacePermission"
+          ],
+          "Resource": "*",
+          "Condition": {
+            "StringEquals": {
+              "ec2:AuthorizedService": "codebuild.amazonaws.com"
+            }
+          }
+        },
+        # {
+        #   "Sid": "CodeBuildInVPCSecurityGroup",
+        #   "Effect": "Allow",
+        #   "Action": [
+        #     "ec2:CreateNetworkInterface",
+        #     "ec2:CreateNetworkInterfacePermission"
+        #   ],
+        #   "Resource": [
+        #     "arn:aws:ec2:${region}:${account_id}:network-interface/*",
+        #     "arn:aws:ec2:${region}:${account_id}:security-group/${security_group_id}"
+        #   ],
+        #   "Condition": {
+        #     "StringEquals": {
+        #       "ec2:AuthorizedService": "codebuild.amazonaws.com"
+        #     }
+        #   }
+        # },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "eks:GetToken",
+            "eks:DescribeCluster",
+            "eks:ListClusters",
+            "eks:DescribeNodegroup",
+            "eks:ListNodegroups",
+            "eks:DescribeFargateProfile",
+            "eks:ListFargateProfiles",
+            "eks:DescribeAddon",
+            "eks:ListAddons",
+            "eks:DescribeUpdate",
+            "eks:ListUpdates"
+          ],
+          "Resource": "arn:aws:eks:${local.region}:${local.account_id}:cluster/*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "eks:UpdateClusterConfig",
+            "eks:CreateNodegroup",
+            "eks:DeleteNodegroup"
+          ],
+          "Resource": "arn:aws:eks:${local.region}:${local.account_id}:cluster/*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "sts:GetCallerIdentity"
+          ],
+          "Resource": "*"
         },
         {
           "Effect": "Allow",

@@ -16,18 +16,22 @@ terraform {
 
 inputs = {
   # VPC and Subnet configuration
-  vpc_cidr_block        = "172.16.0.0/16"
-  public_subnet_1_cidr  = "172.16.1.0/24"
-  public_subnet_2_cidr  = "172.16.2.0/24"
-  private_subnet_1_cidr = "172.16.3.0/24"
-  private_subnet_2_cidr = "172.16.4.0/24"
+  vpc_cidr_block        = local.common.vpc_cidr_block
+  public_subnet_1_cidr  = local.common.public_subnet_1_cidr
+  public_subnet_2_cidr  = local.common.public_subnet_2_cidr
+  private_subnet_1_cidr = local.common.private_subnet_1_cidr
+  private_subnet_2_cidr = local.common.private_subnet_2_cidr
 
   # Availability Zones for the subnets
-  az_1                  = "us-west-2b"
-  az_2                  = "us-west-2c"
+  az_1                  = local.common.az_1
+  az_2                  = local.common.az_2
 
   # Project details
-  project_name = "${local.common.environment}-eks"
+  project_name = "${local.common.environment}-eks-cluster"
+
+  k8s = local.common.k8s
+
+  map_public_ip = local.common.map_public_ip
 
   # Tags for resources
   tags = local.common.tags 

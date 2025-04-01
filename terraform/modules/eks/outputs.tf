@@ -37,3 +37,8 @@ output "fargate_profiles" {
   description = "Fargate profiles created"
   value       = var.fargate_profiles
 }
+
+output "oidc_provider_arn" {
+  description = "OIDC provider ARN for IAM roles for service accounts (IRSA)"
+  value       = module.eks.oidc_provider_arn
+}

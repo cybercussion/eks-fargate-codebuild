@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: python-api-blue # Consider ${COLOR }
+spec:
+  type: ClusterIP
+  selector:
+    app: python-api
+    version: blue # Consider ${COLOR }
+  ports:
+    - name: http-port
+      port: 80
+      targetPort: 5000

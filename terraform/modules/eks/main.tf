@@ -3,11 +3,11 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 5.88.0"
+      version = ">= 5.93.0"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = ">= 2.13.0"
+      version = ">= 2.36.0"
     }
   }
 
@@ -32,17 +32,17 @@ provider "kubernetes" {
 
 # Fetch VPC ID from SSM
 data "aws_ssm_parameter" "vpc_id" {
-  name = var.vpc_ssm_path
+  count = var.use_vpc_from_ssm ? 1 : 0
+  name  = var.vpc_ssm_path
 }
 
-# Fetch Subnet IDs from SSM
 data "aws_ssm_parameter" "public_subnets" {
-  for_each = toset(var.subnet_ssm_paths_public)
+  for_each = var.use_vpc_from_ssm ? toset(var.subnet_ssm_paths_public) : []
   name     = each.value
 }
 
 data "aws_ssm_parameter" "private_subnets" {
-  for_each = toset(var.subnet_ssm_paths_private)
+  for_each = var.use_vpc_from_ssm ? toset(var.subnet_ssm_paths_private) : []
   name     = each.value
 }
 
@@ -52,7 +52,7 @@ data "aws_caller_identity" "current" {}
 # EKS Cluster Module
 module "eks" {
   source          = "terraform-aws-modules/eks/aws"
-  version         = "20.33.1"
+  version         = "20.35.0"
   cluster_name    = var.cluster_name
   cluster_version = var.cluster_version
 
@@ -64,7 +64,7 @@ module "eks" {
       from_port   = 0
       to_port     = 0
       protocol    = "-1"
-      cidr_blocks = ["172.16.0.0/16"]  # Adjust to your VPC CIDR
+      cidr_blocks = [var.vpc_cidr_block]
     }
   }
 
@@ -87,6 +87,18 @@ module "eks" {
     admin_user = {
       kubernetes_groups = ["eks-admin-group"] # Changed from system:masters
       principal_arn    = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/mstatkus"
+      policy_associations = {
+        admin = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+    github_runner = {
+      kubernetes_groups = ["eks-github-runner-group"]  # Or a more restricted group based on your needs TODO: Fix this later.
+      principal_arn    = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/dev-CodeBuildGitHubRunnerRole-eks-fargate-codebuild"
       policy_associations = {
         admin = {
           policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
@@ -133,55 +145,69 @@ module "eks" {
   # )
 
   # Networking
-  vpc_id     = data.aws_ssm_parameter.vpc_id.value
-  subnet_ids = concat(
-    [for ssm in data.aws_ssm_parameter.private_subnets : ssm.value],
-    [for ssm in data.aws_ssm_parameter.public_subnets : ssm.value]
+  vpc_id = var.use_vpc_from_ssm ? data.aws_ssm_parameter.vpc_id[0].value : var.vpc_id
+
+  subnet_ids = var.use_fargate ? (
+    var.use_vpc_from_ssm ?
+      [for ssm in data.aws_ssm_parameter.private_subnets : ssm.value] :
+      var.private_subnet_ids
+  ) : (
+    var.use_vpc_from_ssm ?
+      concat(
+        [for ssm in data.aws_ssm_parameter.private_subnets : ssm.value],
+        [for ssm in data.aws_ssm_parameter.public_subnets : ssm.value]
+      ) :
+      concat(var.private_subnet_ids, var.public_subnet_ids)
   )
 
   # Cluster Endpoint Configuration
-  cluster_endpoint_private_access = true
-  cluster_endpoint_public_access  = false
+  cluster_endpoint_private_access = var.cluster_endpoint_private_access
+  cluster_endpoint_public_access  = var.cluster_endpoint_public_access
 
   # Fargate Profiles
   fargate_profiles = var.fargate_profiles
 
   # Node Groups
   self_managed_node_groups = var.use_fargate ? {} : {
-  for group_name, group_config in var.node_groups : group_name => {
-    name            = group_name
-    instance_type   = group_config.instance_types[0]
-    desired_size    = group_config.desired_capacity
-    max_size        = group_config.max_size
-    min_size        = group_config.min_size
-    subnet_ids      = [for ssm in data.aws_ssm_parameter.private_subnets : ssm.value]
-    tags = merge(
-      var.tags,
-      {
-        "Name" = "${var.cluster_name}-${group_name}"
+    for group_name, group_config in var.node_groups : group_name => {
+      name            = group_name
+      instance_type   = group_config.instance_types[0]
+      desired_size    = group_config.desired_capacity
+      max_size        = group_config.max_size
+      min_size        = group_config.min_size
+      subnet_ids      = [for ssm in data.aws_ssm_parameter.private_subnets : ssm.value]
+      tags = merge(
+        var.tags,
+        {
+          "Name" = "${var.cluster_name}-${group_name}"
+        }
+      )
+      # Add custom security group rules
+      additional_security_group_rules = {
+        egress_vpc_only = {
+          description = "Allow egress only within VPC"
+          type        = "egress"
+          from_port   = 0
+          to_port     = 0
+          protocol    = "-1"
+          cidr_blocks = [var.vpc_cidr_block]
+        }
       }
-    )
-    # Add custom security group rules
-    additional_security_group_rules = {
-      egress_vpc_only = {
-        description = "Allow egress only within VPC"
-        type        = "egress"
-        from_port   = 0
-        to_port     = 0
-        protocol    = "-1"
-        cidr_blocks = ["172.16.0.0/16"]  # Your VPC CIDR
-      }
+      # Disable default security group rules if possible
+      use_default_security_group = false  # May not be supported; see below
     }
-    # Disable default security group rules if possible
-    use_default_security_group = false  # May not be supported; see below
   }
-}
 
   # CoreDNS configuration
   cluster_addons = {
     coredns = {
       most_recent = true
       preserve    = true
+      timeouts = {
+        create = "40m"
+        update = "40m"
+        delete = "10m"
+      }
       configuration_values = jsonencode({
         tolerations = [
           {
@@ -203,6 +229,11 @@ data "aws_eks_cluster_auth" "cluster" {
   name = var.cluster_name
 }
 
+resource "time_sleep" "wait_for_access" {
+  depends_on = [module.eks]
+  create_duration = "30s"
+}
+
 # Role Binding to Map eks-admins Group to Cluster Admin Role
 resource "kubernetes_role_binding" "eks_admin" {
   metadata {
@@ -221,7 +252,8 @@ resource "kubernetes_role_binding" "eks_admin" {
     name      = "eks-admins" # Match the custom group
     api_group = "rbac.authorization.k8s.io"
   }
-  depends_on = [module.eks]
+  depends_on = [time_sleep.wait_for_access] # Adjusted to give it some lead time for mapping (occasional Error: Unauthorized)
+  #depends_on = [module.eks]
 }
 # Or Cluster Wide
 # resource "kubernetes_cluster_role_binding" "eks_admin" {
@@ -241,4 +273,11 @@ resource "kubernetes_role_binding" "eks_admin" {
 #     api_group = "rbac.authorization.k8s.io"
 #   }
 #   depends_on = [module.eks]
+# }
+
+# resource "aws_vpc_endpoint" "eks" {
+#   vpc_id             = var.vpc_id
+#   service_name       = "com.amazonaws.${var.region}.eks"
+#   subnet_ids         = var.private_subnet_ids
+#   security_group_ids = var.security_group_ids
 # }

@@ -1,4 +1,4 @@
-terraform 1.5.7
-terragrunt 0.68.14
+terraform 1.11.3
+terragrunt 0.77.9
 tflint 0.55.1
 tfsec 1.28.13

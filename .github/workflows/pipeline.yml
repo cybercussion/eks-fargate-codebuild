@@ -1,0 +1,159 @@
+name: Deploy Python API to EKS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "python-api/**"
+      - ".github/workflows/**"
+
+env:
+  AWS_REGION: us-west-2
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  EKS_CLUSTER_NAME: dev-eks-cluster
+  ECR_REPO_NAME: eks-fargate-demo-python-a-dev
+  IMAGE_TAG: ${{ github.sha }}
+  ENVIRONMENT: dev
+  CODEBUILD_ROLE_NAME: dev-CodeBuildGitHubRunnerRole-eks-fargate-codebuild
+  KUBECONFIG_PATH: python-api/k8s/kubeconfig.yaml
+  ROUTE53_URL: python-a-dev.cybercussion.com
+  ACM_CERTIFICATE_ARN: ${{ secrets.ACM_CERTIFICATE_ARN }}
+  AWS_LOAD_BALANCER_CONTROLLER_ROLE_ARN: ${{ secrets.AWS_LOAD_BALANCER_CONTROLLER_ROLE_ARN }}
+
+  # - name: Set environment variables from branch
+      #   run: |
+      #     if [[ "${GITHUB_REF##*/}" == "main" ]]; then
+      #       echo "ENVIRONMENT=prod" >> $GITHUB_ENV
+      #       echo "EKS_CLUSTER_NAME=prod-eks-cluster" >> $GITHUB_ENV
+      #       echo "ECR_REPO_NAME=prod-python-api" >> $GITHUB_ENV
+      #     elif [[ "${GITHUB_REF##*/}" == "release" ]]; then
+      #       echo "ENVIRONMENT=stage" >> $GITHUB_ENV
+      #       echo "EKS_CLUSTER_NAME=stage-eks-cluster" >> $GITHUB_ENV
+      #       echo "ECR_REPO_NAME=stage-python-api" >> $GITHUB_ENV
+      #     else
+      #       echo "ENVIRONMENT=dev" >> $GITHUB_ENV
+      #       echo "EKS_CLUSTER_NAME=dev-eks-cluster" >> $GITHUB_ENV
+      #       echo "ECR_REPO_NAME=dev-python-api" >> $GITHUB_ENV
+      #     fi
+
+jobs:
+  deploy:
+    name: Deploy via CodeBuild Runner
+    runs-on: codebuild-dev-eks-fargate-codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Fetch EKS Cluster Endpoint and Certificate Authority Data
+        id: fetch-cert-endpoint
+        run: |
+          EKS_CA_CERT=$(aws eks describe-cluster --name $EKS_CLUSTER_NAME --region $AWS_REGION --query "cluster.certificateAuthority.data" --output text)
+          EKS_ENDPOINT=$(aws eks describe-cluster --name $EKS_CLUSTER_NAME --region $AWS_REGION --query "cluster.endpoint" --output text)
+          if [[ -z "$EKS_CA_CERT" || -z "$EKS_ENDPOINT" ]]; then
+            echo "Failed to fetch EKS cluster data"
+            exit 1
+          fi
+          echo "EKS_CA_CERT=$EKS_CA_CERT" >> $GITHUB_ENV
+          echo "EKS_ENDPOINT=$EKS_ENDPOINT" >> $GITHUB_ENV
+
+      - name: Configure kubectl and test connectivity
+        run: |
+          # Fetch EKS data
+          if [[ -z "$EKS_CA_CERT" || -z "$EKS_ENDPOINT" ]]; then
+            echo "Failed to fetch EKS cluster data"
+            exit 1
+          fi
+
+          # Write kubeconfig.yaml directly
+          cat <<EOF > $KUBECONFIG_PATH
+          apiVersion: v1
+          clusters:
+            - cluster:
+                server: $EKS_ENDPOINT
+                certificate-authority-data: $EKS_CA_CERT
+              name: eks-cluster
+          contexts:
+            - context:
+                cluster: eks-cluster
+                user: aws
+              name: eks-context
+          current-context: eks-context
+          users:
+            - name: aws
+              user:
+                exec:
+                  apiVersion: client.authentication.k8s.io/v1beta1
+                  command: aws
+                  args:
+                    - eks
+                    - get-token
+                    - --cluster-name
+                    - $EKS_CLUSTER_NAME
+                    - --region
+                    - $AWS_REGION
+          EOF
+
+          # Test it
+          kubectl --kubeconfig $KUBECONFIG_PATH get nodes
+        continue-on-error: false
+
+      # Now you can proceed with Docker build and ECR steps once EKS connection is verified
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Amazon ECR
+        run: |
+          aws ecr get-login-password --region $AWS_REGION \
+            | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+      - name: Build and push Docker image with caching
+        run: |
+          REPO_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME
+          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $REPO_URI
+          docker pull $REPO_URI:latest || true
+          docker build --platform linux/amd64 --cache-from $REPO_URI:latest -t $REPO_URI:$IMAGE_TAG ./python-api
+          docker push $REPO_URI:$IMAGE_TAG
+
+      - name: Deploy to EKS with variable substitution
+        run: |
+          export AWS_REGION=$AWS_REGION
+          export AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID
+          export ECR_REPO_NAME=$ECR_REPO_NAME
+          export IMAGE_TAG=$IMAGE_TAG
+          export ACM_CERTIFICATE_ARN=${{ secrets.ACM_CERTIFICATE_ARN }}
+          export AWS_LOAD_BALANCER_CONTROLLER_ROLE_ARN=${{ secrets.AWS_LOAD_BALANCER_CONTROLLER_ROLE_ARN }}
+          
+          # Apply the aws-auth-configmap.yaml
+          envsubst < ./python-api/k8s/aws-auth-configmap.yaml | kubectl --kubeconfig $KUBECONFIG_PATH apply -f -
+
+          # Apply the deployment.yaml with variable substitution
+          envsubst < ./python-api/k8s/deployment.yaml | kubectl --kubeconfig $KUBECONFIG_PATH apply -f -
+
+          # Apply the service.yaml with variable substitution (if needed)
+          envsubst < ./python-api/k8s/service.yaml | kubectl --kubeconfig $KUBECONFIG_PATH apply -f -
+
+          # Apply hpa.yaml (no substitution needed)
+          kubectl --kubeconfig $KUBECONFIG_PATH apply -f ./python-api/k8s/hpa.yaml
+
+          # Apply the service-account.yaml with variable substitution (if needed)
+          envsubst < ./python-api/k8s/service-account.yaml | kubectl --kubeconfig $KUBECONFIG_PATH apply -f -
+
+          # Apply the ingress.yaml with variable substitution (if needed)
+          envsubst < ./python-api/k8s/ingress.yaml | kubectl --kubeconfig $KUBECONFIG_PATH apply -f -
+
+          # Broken dreams (clean up later)
+          # envsubst < ./python-api/k8s/aws-auth-configmap.yaml | kubectl --kubeconfig $KUBECONFIG_PATH apply -f -
+          # envsubst < ./python-api/k8s/deployment.yaml | kubectl --kubeconfig $KUBECONFIG_PATH apply -f -
+          # cat ./python-api/k8s/hpa.yaml | kubectl --kubeconfig $KUBECONFIG_PATH apply -f -  # No envsubst needed
+
+          # This way can work but you have to ignore files
+          # for file in ./python-api/k8s/*.yaml; do
+          #   # Skip kubeconfig.yaml since it's not a Kubernetes resource
+          #   [[ "$file" == "$KUBECONFIG_PATH" ]] && continue
+          #   envsubst < "$file" | kubectl --kubeconfig $KUBECONFIG_PATH apply -f -
+          # done
+
+      - name: Verify Deployment Rollout
+        run: |
+          kubectl --kubeconfig ${{ env.KUBECONFIG_PATH }} rollout status deployment/python-api --timeout=180s
