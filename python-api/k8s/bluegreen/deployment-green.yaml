@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: python-api-green # Consider ${COLOR }
+  labels:
+    app: python-api
+    version: green
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: python-api
+      version: green # Consider ${COLOR }
+  template:
+    metadata:
+      labels:
+        app: python-api
+        version: green # Consider ${COLOR }
+    spec:
+      containers:
+        - name: python-api
+          image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:${IMAGE_TAG}
+          ports:
+            - containerPort: 5000
+          

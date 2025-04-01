@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: python-api-canary
+  labels:
+    app: python-api
+spec:
+  selector:
+    app: python-api
+    version: canary
+  ports:
+    - name: http-port
+      port: 80
+      targetPort: 5000
+      protocol: TCP
+  type: ClusterIP

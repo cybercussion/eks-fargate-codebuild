@@ -44,6 +44,36 @@ variable "image" {
   default     = "aws/codebuild/standard:6.0"
 }
 
+variable "privileged_mode" {
+  description = "Enable Docker-in-Docker (required for building containers)"
+  type        = bool
+  default     = false
+}
+
+variable "enable_codebuild_vpc" {
+  type        = bool
+  description = "Whether to enable VPC config for CodeBuild"
+  default     = false
+}
+
+variable "vpc_id" {
+  type        = string
+  description = "VPC ID for CodeBuild VPC config"
+  default     = null
+}
+
+variable "private_subnet_ids" {
+  type        = list(string)
+  description = "Private subnet IDs for CodeBuild"
+  default     = []
+}
+
+variable "security_group_ids" {
+  type        = list(string)
+  description = "Security group IDs for CodeBuild"
+  default     = []
+}
+
 variable "tags" {
   description = "Tags for the CodeBuild project"
   type        = map(string)

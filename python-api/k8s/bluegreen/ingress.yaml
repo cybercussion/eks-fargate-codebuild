@@ -1,0 +1,43 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: python-api-ingress
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/certificate-arn: ${ACM_CERTIFICATE_ARN}
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/actions.forward-active: >
+      {"type":"forward","targetGroupStickinessConfig":{"enabled":true,"durationSeconds":30},
+      "forwardConfig":{"targetGroups":[{"serviceName":"python-api-green","servicePort":"80"}]}}
+spec:
+  ingressClassName: alb
+  rules:
+    - host: ${ROUTE53_URL}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: forward-active
+                port:
+                  name: use-annotation
+
+          - path: /blue
+            pathType: Prefix
+            backend:
+              service:
+                name: python-api-blue
+                port:
+                  number: 80
+
+          - path: /green
+            pathType: Prefix
+            backend:
+              service:
+                name: python-api-green
+                port:
+                  number: 80

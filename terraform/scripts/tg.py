@@ -24,6 +24,8 @@ import os
 import argparse
 import shutil
 import subprocess
+import requests
+import re
 from pathlib import Path
 import sys
 from utils.aws_profile import find_profile_by_account
@@ -39,6 +41,174 @@ except ImportError:
 
 IGNORED = {"templates", "__pycache__", ".DS_Store", "README.md", "artifacts"}
 
+def safe_version_key(v):
+    numeric_part = re.match(r"^\d+(\.\d+)*", v)
+    if numeric_part:
+        return [int(x) for x in numeric_part.group(0).split(".")]
+    return [0, 0, 0]
+
+def get_local_version(bin_name):
+    try:
+        output = subprocess.check_output([bin_name, "-version"], stderr=subprocess.STDOUT).decode()
+        return output.splitlines()[0].split(" ")[-1].strip("v")
+    except Exception:
+        return None
+
+def get_latest_github_release(repo):
+    try:
+        res = requests.get(f"https://api.github.com/repos/{repo}/releases/latest", timeout=5)
+        if res.status_code == 200:
+            return res.json()["tag_name"].lstrip("v")
+    except Exception:
+        return None
+
+def check_version_updates():
+    print("🔍 Checking CLI tool versions...\n")
+
+    for tool, repo in {
+        "terraform": "hashicorp/terraform",
+        "terragrunt": "gruntwork-io/terragrunt"
+    }.items():
+        local = get_local_version(tool)
+        latest = get_latest_github_release(repo)
+        if local and latest:
+            if local != latest:
+                print(f"⬆️  {tool} is outdated: {local} → {latest}")
+            else:
+                print(f"✅ {tool} is up-to-date: {local}")
+        else:
+            print(f"⚠️  Could not determine {tool} version.")
+
+# Providers
+def get_latest_provider_version(namespace, name):
+    """Query Terraform Registry for latest stable provider version"""
+    try:
+        url = f"https://registry.terraform.io/v1/providers/{namespace}/{name}/versions"
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            versions = response.json().get("versions", [])
+            stable_versions = [
+                v["version"]
+                for v in versions
+                if not any(suffix in v["version"] for suffix in ["-alpha", "-beta", "-rc", "-pre"])
+            ]
+            if stable_versions:
+                return sorted(stable_versions, key=safe_version_key)[-1]
+            else:
+                print(f"⚠️  No stable versions found for {namespace}/{name}")
+        else:
+            print(f"⚠️  Failed to fetch provider: {namespace}/{name} ({response.status_code})")
+    except Exception as e:
+        print(f"⚠️  Error fetching provider version for {namespace}/{name}: {e}")
+    return None
+
+def extract_required_provider_blocks(content):
+    """Return a list of full required_providers blocks using brace counting"""
+    blocks = []
+    start = content.find("required_providers")
+    while start != -1:
+        brace_count = 0
+        in_block = False
+        end = start
+        for i, c in enumerate(content[start:], start=start):
+            if c == "{":
+                brace_count += 1
+                in_block = True
+            elif c == "}":
+                brace_count -= 1
+                if in_block and brace_count == 0:
+                    blocks.append(content[start:i+1])
+                    break
+        start = content.find("required_providers", i + 1)
+    return blocks
+
+def check_provider_updates(base_path="terraform/modules"):
+    print("\n📦 Scanning Terraform providers with declared and latest versions...\n")
+    for tf in Path(base_path).rglob("*.tf"):
+        with open(tf) as f:
+            content = f.read()
+
+            if "required_providers" not in content:
+                continue
+
+            blocks = extract_required_provider_blocks(content)
+            if not blocks:
+                continue
+
+            print(f"📁 {tf.relative_to(base_path)}")
+
+            for block in blocks:
+                matches = re.findall(
+                    r'(\w+)\s*=\s*{[^}]*source\s*=\s*"([^"]+)"[^}]*version\s*=\s*"([^"]+)"',
+                    block, re.DOTALL
+                )
+                for name, source, version in matches:
+                    latest = None
+                    try:
+                        namespace, module_name = source.split("/")
+                        latest = get_latest_provider_version(namespace, module_name)
+                    except ValueError:
+                        latest = "❌ Invalid source"
+                    print(f"   {name}:")
+                    print(f"     source:  {source}")
+                    print(f"     current: {version}")
+                    print(f"     latest:  {latest}")
+
+# Modules
+def extract_module_sources(base_path="terraform/modules"):
+    modules = []
+    for tf in Path(base_path).rglob("*.tf"):
+        with open(tf) as f:
+            content = f.read()
+            matches = re.findall(
+                r'source\s*=\s*"([^"]+)"\s*[\n\s]*version\s*=\s*"([^"]+)"',
+                content,
+                re.MULTILINE
+            )
+            modules.extend(matches)
+    return modules
+
+def get_latest_module_version(source):
+    try:
+        namespace, name, provider = source.split("/")
+        url = f"https://registry.terraform.io/v1/modules/{namespace}/{name}/{provider}/versions"
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            versions = response.json().get("modules", [{}])[0].get("versions", [])
+            stable_versions = [
+                v["version"]
+                for v in versions
+                if not any(suffix in v["version"] for suffix in ["-beta", "-alpha", "-rc"])
+            ]
+            return sorted(stable_versions, key=lambda s: list(map(int, s.split("."))))[-1] if stable_versions else None
+    except Exception as e:
+        print(f"⚠️  Error fetching version for {source}: {e}")
+    return None
+
+def check_module_updates():
+    print("\n📦 Checking Terraform module versions...")
+    modules = extract_module_sources()
+    seen = set()
+    
+    for source, current_version in modules:
+        if source in seen:
+            continue
+        seen.add(source)
+        
+        parts = source.split("/")
+        if len(parts) != 3:
+            # Skip non-module sources like hashicorp/aws (providers)
+            continue
+
+        latest_version = get_latest_module_version(source)
+        if latest_version:
+            if latest_version != current_version:
+                print(f"⬆️  {source}\n   Current: {current_version}\n   Latest:  {latest_version}")
+            else:
+                print(f"✅ {source} is up-to-date ({current_version})")
+        else:
+            print(f"⚠️  Could not fetch latest version for {source}")
+
 def run_terragrunt(path, command, run_all, non_interactive, parallelism, dry_run=False, log_level="info", extra_args=None):
   cmd = ["terragrunt"]
   if non_interactive:
@@ -52,7 +222,7 @@ def run_terragrunt(path, command, run_all, non_interactive, parallelism, dry_run
     cmd += [command]
 
   if log_level:
-    cmd.append(f"--terragrunt-log-level={log_level}")
+    cmd.append(f"--log-level={log_level}")
 
   if extra_args:
     cmd.extend([arg for arg in extra_args if arg.strip()])
@@ -145,6 +315,7 @@ def main():
   parser.add_argument("--dry-run", action="store_true", help="Only show the command, don't run it")
   parser.add_argument("--log-level", default="info", choices=["trace", "debug", "info", "warn", "error"], help="Terragrunt log level (default: info)")
   parser.add_argument("--extra-args", nargs="*", help="Additional arguments to pass to terragrunt")
+  parser.add_argument("--check-updates", action="store_true", help="Check if Terraform/Terragrunt and provider versions are outdated")
   args = parser.parse_args()
   
   # Check if args missing, go into wizard mode
@@ -166,6 +337,12 @@ def main():
     path = base_path / "accounts" / args.account / args.env
     if args.folder:
       path = path / args.folder
+      
+  if args.check_updates:
+    check_version_updates()
+    check_provider_updates()
+    check_module_updates()
+    sys.exit(0)
 
   # Check if path exists
   if not path.exists():

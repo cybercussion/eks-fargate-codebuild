@@ -13,7 +13,7 @@ terraform {
 }
 
 inputs = {
-  role_name = "nonprod-eks-cluster-fargate-pod-role"
+  role_name = local.common.pod_role_name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
@@ -29,7 +29,7 @@ inputs = {
   })
 
   inline_policies = {
-    "FargatePodExecutionPolicy" = jsonencode({
+    "${local.common.pod_role_name}-pod-policy" = jsonencode({
       Version = "2012-10-17",
       Statement = [
         # Permissions for ECR

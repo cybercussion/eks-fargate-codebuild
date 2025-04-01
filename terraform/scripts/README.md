@@ -18,10 +18,11 @@ Quick way to access terraform/terragrunt commands without needing to `cd` into d
 | `--dry-run`           | Show what would be executed, but don’t actually run anything    | `--dry-run`                     |
 | `--log-level`         | Terragrunt log verbosity (`trace`, `debug`, `info`, `warn`, `error`) | `--log-level error`        |
 | `--extra-args`        | Additional arguments passed directly to Terragrunt              | `--extra-args -lock=false`      |
+| `--check-updates`     | Felt like this was missing functionality.  Does not execute script. |  `--check-updates`          |
 
 Without arguments you'll get walked thru a wizard.
 
-![Wizard](../../docs/python_wizard.png)
+![Wizard](../../docs/img/python_wizard.png)
 
 ## About
 
@@ -136,4 +137,81 @@ AWS now allows you to run a CodeBuild runner to execute Github Actions in AWS.
 
 ```shell
 python terraform/scripts/tg.py -a nonprod -e shared -f codebuild-gitlab-runner -c plan --run-all
+```
+
+### Terraform Upgrade?
+
+Performing a update will require a `--reconfigure` via --extra-args
+
+`python terraform/scripts/tg.py -a nonprod -e dev -f eks -c init --extra-args=--reconfigure`
+
+Check updates (felt like this was missing functionality)
+
+```bash
+python terraform/scripts/tg.py -a nonprod -e dev -f eks -c validate --check-updates
+🔍 Checking CLI tool versions...
+
+✅ terraform is up-to-date: 1.11.3
+✅ terragrunt is up-to-date: 0.77.9
+
+📦 Scanning Terraform providers with declared and latest versions...
+
+📁 alb-controller/main.tf
+   helm:
+     source:  hashicorp/helm
+     current: >= 2.7.1
+     latest:  2.17.0
+📁 security_group/main.tf
+   aws:
+     source:  hashicorp/aws
+     current: >= 5.93.0
+     latest:  5.93.0
+📁 alb/main.tf
+   aws:
+     source:  hashicorp/aws
+     current: >= 5.93.0
+     latest:  5.93.0
+📁 ecr/main.tf
+   aws:
+     source:  hashicorp/aws
+     current: >= 5.93.0
+     latest:  5.93.0
+📁 eks/main.tf
+   aws:
+     source:  hashicorp/aws
+     current: >= 5.93.0
+     latest:  5.93.0
+📁 iam_role/main.tf
+   aws:
+     source:  hashicorp/aws
+     current: >= 5.93.0
+     latest:  5.93.0
+📁 vpc_subnet/main.tf
+   aws:
+     source:  hashicorp/aws
+     current: >= 5.93.0
+     latest:  5.93.0
+📁 route53/main.tf
+   aws:
+     source:  hashicorp/aws
+     current: >= 5.93.0
+     latest:  5.93.0
+📁 codebuild-runner/main.tf
+   aws:
+     source:  hashicorp/aws
+     current: >= 5.87.0
+     latest:  5.93.0
+
+📦 Checking Terraform module versions...
+✅ terraform-aws-modules/eks/aws is up-to-date (20.35.0)
+```
+
+```bash
+asdf list all terraform
+asdf install terraform 1.11.3
+asdf set terraform 1.11.3
+
+asdf list all terragrunt
+asdf install terragrunt 0.77.9
+asdf set terragrunt 0.77.9
 ```
