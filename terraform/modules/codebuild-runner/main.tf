@@ -58,11 +58,20 @@ resource "aws_codebuild_project" "runner" {
     # }
   }
 
+  dynamic "vpc_config" {
+    for_each = var.enable_codebuild_vpc ? [1] : []
+    content {
+      vpc_id             = var.vpc_id
+      subnets            = var.private_subnet_ids
+      security_group_ids = var.security_group_ids
+    }
+  }
+
   environment {
     compute_type    = var.compute_type
     image          = var.image
     type           = "LINUX_CONTAINER"
-    privileged_mode = false
+    privileged_mode = var.privileged_mode
   }
 
   artifacts {

@@ -23,12 +23,43 @@ variable "cluster_name" {
 variable "cluster_version" {
   description = "Version of the EKS cluster"
   type        = string
-  default     = "1.31"
+  default     = "1.32"
+}
+
+variable "cluster_endpoint_private_access" {
+  description = "Whether the EKS cluster API is accessible within the VPC"
+  type        = bool
+  default     = true
+}
+
+variable "cluster_endpoint_public_access" {
+  description = "Whether the EKS cluster API is accessible from the internet"
+  type        = bool
+  default     = false
+}
+
+variable "use_vpc_from_ssm" {
+  description = "Whether to load VPC and subnets from SSM or use direct values"
+  type        = bool
+  default     = false
+}
+
+variable "vpc_cidr_block" {
+  description = "CIDR block for the VPC"
+  type        = string
+  default     = "10.10.0.0/16"  # You can provide a default CIDR block, or leave it to be defined at runtime.
+}
+
+variable "vpc_id" {
+  description = "Direct VPC ID, used when not loading from SSM"
+  type        = string
+  default     = ""
 }
 
 variable "vpc_ssm_path" {
-  description = "The SSM parameter path for the VPC ID."
+  description = "SSM parameter path for the VPC ID (optional if vpc_id is provided)"
   type        = string
+  default     = null
 }
 
 # Public Subnets for EKS Cluster
@@ -41,6 +72,18 @@ variable "subnet_ssm_paths_public" {
 variable "subnet_ssm_paths_private" {
   description = "List of SSM Parameter paths to retrieve private subnet IDs for Fargate."
   type        = list(string)
+}
+
+variable "private_subnet_ids" {
+  description = "Direct private subnet IDs (for Fargate), used when not using SSM"
+  type        = list(string)
+  default     = []
+}
+
+variable "public_subnet_ids" {
+  description = "Direct public subnet IDs, used when not using SSM"
+  type        = list(string)
+  default     = []
 }
 
 variable "node_groups" {

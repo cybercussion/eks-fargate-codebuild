@@ -19,14 +19,14 @@ dependency "vpc" {
   mock_outputs = {
     vpc_id = "vpc-mock"
   }
-  skip = local.common.use_vpc_from_ssm
 }
 
 inputs = {
   # Retrieve the VPC ID from the SSM parameter
   # Dynamic VPC assignment
-  vpc_ssm_path = local.common.use_vpc_from_ssm ? local.common.vpc_ssm_path : null
-  vpc_id       = local.common.use_vpc_from_ssm ? null : dependency.vpc.outputs.vpc_id
+  use_vpc_from_ssm = local.common.use_vpc_from_ssm
+  vpc_ssm_path     = local.common.use_vpc_from_ssm ? local.common.vpc_ssm_path : null
+  vpc_id           = local.common.use_vpc_from_ssm ? null : dependency.vpc.outputs.vpc_id
 
   name_prefix = "${local.common.environment}-eks-cluster-sg"     # Security group name prefix
   description = "Security group for EKS cluster"
@@ -36,6 +36,13 @@ inputs = {
     {
       from_port       = 443
       to_port         = 443
+      protocol        = "tcp"
+      cidr_blocks     = ["0.0.0.0/0"]  # Adjust this based on security needs
+      security_groups = []
+    },
+    {
+      from_port       = 80
+      to_port         = 80
       protocol        = "tcp"
       cidr_blocks     = ["0.0.0.0/0"]  # Adjust this based on security needs
       security_groups = []

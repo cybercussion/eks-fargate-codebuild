@@ -19,6 +19,14 @@ dependency "codebuild_role" {
   }
 }
 
+dependency "codebuild_sg" {
+  config_path = "../codebuild-sg"
+
+  mock_outputs = {
+    security_group_id = "sg-mock"
+  }
+}
+
 # Since the connection gets reused, use the one pre-setup in Parameter Store.
 # dependency "codestar_connection" {
 #   config_path = "../../codestar-connection"
@@ -31,13 +39,18 @@ dependency "codebuild_role" {
 
 inputs = {
   project_name = "${local.common.environment}-${local.common.github_repo}-github-runner"
-  service_role_arn = dependency.codebuild_role.outputs.role_arn
-  provider_type    = "GitHub"
-  repo_url         = local.common.location
-  connection_arn   = local.common.connection_arn
-  connection_name  = local.common.connection_name
-  compute_type     = local.common.compute_type
-  image            = local.common.image
+  service_role_arn     = dependency.codebuild_role.outputs.role_arn
+  provider_type        = "GitHub"
+  repo_url             = local.common.location
+  connection_arn       = local.common.connection_arn
+  connection_name      = local.common.connection_name
+  compute_type         = local.common.compute_type
+  image                = local.common.image
+  privileged_mode      = local.common.privileged_mode
+  enable_codebuild_vpc = true
+  vpc_id               = local.common.vpc_id
+  private_subnet_ids   = local.common.private_subnet_ids
+  security_group_ids   = [dependency.codebuild_sg.outputs.security_group_id]
 
   # Tags for resources
   tags = local.common.tags
